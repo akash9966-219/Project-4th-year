@@ -1,0 +1,6 @@
+{
+  "name": "IEEE 802.11 WLAN Congestion & Scheduling Lab",
+  "description": "Interactive discrete-event simulation and comparative analysis bench for contention-based and learning-based congestion control and traffic scheduling across IEEE 802.11 WLANs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

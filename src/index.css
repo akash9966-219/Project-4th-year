@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #030712;
+  color: #f3f4f6;
+  overflow-x: hidden;
+}
+
+/* Custom crisp scrollbar for simulation logs and panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f293d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Orientation and Responsive Media Queries */
+@media (orientation: portrait) {
+  .orientation-portrait-stack {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 700px) {
+  .compact-landscape {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  .compact-canvas-height {
+    height: 380px !important;
+  }
+}
+
+/* Touch and mobile safe area enhancements */
+@supports (padding: max(0px)) {
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
