@@ -40,6 +40,9 @@ export const StationDetailModal: React.FC<StationDetailModalProps> = ({
               </h3>
               <p className="text-xs text-slate-400 font-mono">
                 Distance: {station.distanceToAp.toFixed(1)}m · SNR: {station.snrDb} dB · PHY: {station.phyRateMbps} Mbps
+                {station.mobilityPath && (
+                  <span className="text-purple-400 ml-2">· Path: {station.mobilityPath} ({station.mobilitySpeed?.toFixed(1)} m/s)</span>
+                )}
               </p>
             </div>
           </div>

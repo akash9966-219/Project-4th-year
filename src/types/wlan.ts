@@ -82,6 +82,11 @@ export interface Station {
   // Resource unit allocation for 802.11ax OFDMA
   assignedRuIndex?: number;
   assignedRuTones?: number;
+  // Dynamic mobility model along predefined paths
+  mobilityPath?: 'CIRCULAR' | 'FIGURE_EIGHT' | 'RADIAL_CONVERGE' | 'RANDOM_WAYPOINT';
+  mobilitySpeed?: number; // meters per second
+  baseAngle?: number;
+  baseRadius?: number;
 }
 
 export interface ChannelState {
@@ -104,6 +109,18 @@ export interface TimelineSlotEvent {
   success?: boolean;
 }
 
+export interface DelayHistogramBin {
+  binLabel: string;
+  minMs: number;
+  maxMs: number;
+  totalCount: number;
+  percentage: number;
+  AC_VO: number;
+  AC_VI: number;
+  AC_BE: number;
+  AC_BK: number;
+}
+
 export interface SimulationMetrics {
   timestampUs: number;
   totalThroughputMbps: number;
@@ -111,6 +128,8 @@ export interface SimulationMetrics {
   collisionRatePct: number;
   averageDelayMs: number;
   jitterMs: number;
+  p95DelayMs?: number;
+  delayHistogram?: DelayHistogramBin[];
   jainsFairnessIndex: number;
   activeStationsCount: number;
   totalPacketsSent: number;
@@ -131,6 +150,13 @@ export interface QLearningAgentState {
   actionsTakenCount: number;
 }
 
+export type TopologyOrientationMode =
+  | 'CONCENTRIC_TIERS'
+  | 'RADIAL_STAR'
+  | 'UNIFORM_HEXAGONAL'
+  | 'PERIMETER_RING'
+  | 'HIDDEN_TERMINAL_PAIRS';
+
 export interface SimulationConfig {
   wifiStandard: '802.11ax' | '802.11ac' | '802.11n';
   channelBandwidthMhz: 20 | 40 | 80 | 160;
@@ -149,6 +175,9 @@ export interface SimulationConfig {
   simSpeedMultiplier: number;
   enableNoiseChannelError: boolean;
   channelPerPct: number; // Packet Error Rate
+  dynamicMobilityEnabled?: boolean;
+  mobilityPattern?: 'ORBITAL' | 'CONVERGING' | 'FIGURE_EIGHT' | 'HYBRID';
+  topologyMode?: TopologyOrientationMode;
 }
 
 export type ToastType = 'critical' | 'warning' | 'recovery' | 'info';
@@ -173,4 +202,54 @@ export interface ToastSettings {
   collisionThresholdPct: number;
   cooldownSeconds: number;
   soundEnabled: boolean;
+}
+
+export type CollisionRiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+
+export interface AlternativePreventionMethod {
+  id: string;
+  title: string;
+  category: 'HANDSHAKE' | 'PHY_OFDMA' | 'MAC_BACKOFF' | 'QUEUE_AQM' | 'TOPOLOGY';
+  description: string;
+  technicalMechanism: string;
+  expectedCollisionReductionPct: number;
+  expectedThroughputGainPct: number;
+  actionConfig: Partial<SimulationConfig>;
+  triggerReorientMode?: TopologyOrientationMode | null;
+  actionButtonText: string;
+  applied?: boolean;
+}
+
+export interface AIPredictionResult {
+  timestampMs: number;
+  predictedCollisionRiskPct: number;
+  riskLevel: CollisionRiskLevel;
+  projectedRateIn5sPct: number;
+  timeToCollapseSec: number | null;
+  contentionEntropy: number;
+  rootCauseDiagnosis: string;
+  alternativeMethods: AlternativePreventionMethod[];
+  source: 'GEMINI_AI' | 'BIANCHI_NEURAL_HEURISTIC';
+}
+
+export interface NormalcyHealthReport {
+  overallHealthScore: number; // 0 to 100
+  status: 'OPTIMAL' | 'ELEVATED' | 'HIGH_CONTENTION' | 'COLLAPSE';
+  collisionHealth: number;    // 0 to 100
+  throughputHealth: number;   // 0 to 100
+  delayHealth: number;        // 0 to 100
+  fairnessHealth: number;     // 0 to 100
+  isAtNormalcy: boolean;
+  activeBottlenecks: string[];
+}
+
+export interface NormalcyInterventionLog {
+  id: string;
+  timestamp: number;
+  simTimeMs: number;
+  triggerReason: string;
+  actionsTaken: string[];
+  healthScoreBefore: number;
+  healthScoreAfter: number;
+  reductionCollisionPct: number;
 }

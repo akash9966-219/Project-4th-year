@@ -28,21 +28,20 @@ body {
   background: #374151;
 }
 
+/* Hide scrollbar for clean horizontal swipe containers */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Orientation and Responsive Media Queries */
 @media (orientation: portrait) {
   .orientation-portrait-stack {
     display: flex;
     flex-direction: column;
-  }
-}
-
-@media (orientation: landscape) and (max-height: 700px) {
-  .compact-landscape {
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
-  }
-  .compact-canvas-height {
-    height: 380px !important;
   }
 }
 

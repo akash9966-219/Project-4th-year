@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { SimulationConfig } from '../types/wlan';
-import { Sparkles, Users, Video, Database, Radio } from 'lucide-react';
+import { Sparkles, Users, Video, Database, Radio, Route } from 'lucide-react';
 
 interface ScenarioPreset {
   id: string;
@@ -77,6 +77,21 @@ export const ScenarioPresets: React.FC<ScenarioPresetsProps> = ({
         wifiStandard: '802.11ax',
         trafficScheduler: 'OFDMA_MULTI_USER',
         congestionAlgorithm: 'Q_LEARNING_RL',
+        dynamicMobilityEnabled: false,
+      },
+    },
+    {
+      id: 'dynamic_mobility',
+      name: 'Dynamic Mobility & Topology Shift',
+      badge: 'Mobile Trajectory',
+      description: 'Stations orbit and converge along orbital and lemniscate paths. Evaluates how changing distances, SNR, and PHY rate adaptation stress contention control.',
+      icon: Route,
+      config: {
+        stationCount: 14,
+        wifiStandard: '802.11ax',
+        congestionAlgorithm: 'IDLE_SENSE',
+        trafficScheduler: 'PROPORTIONAL_FAIR',
+        dynamicMobilityEnabled: true,
       },
     },
   ];
@@ -93,14 +108,14 @@ export const ScenarioPresets: React.FC<ScenarioPresetsProps> = ({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="flex overflow-x-auto pb-1 gap-3 sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 scrollbar-none">
         {presets.map((preset) => {
           const Icon = preset.icon;
           return (
             <button
               key={preset.id}
               onClick={() => onApplyScenario(preset.config)}
-              className="p-3.5 rounded-lg border border-slate-800/80 bg-slate-950/60 hover:bg-slate-900 hover:border-slate-700/80 transition-all text-left flex flex-col justify-between group cursor-pointer"
+              className="w-[230px] shrink-0 sm:w-auto p-3.5 rounded-lg border border-slate-800/80 bg-slate-950/60 hover:bg-slate-900 hover:border-slate-700/80 transition-all text-left flex flex-col justify-between group cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">

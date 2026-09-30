@@ -16,10 +16,12 @@ import { AlgorithmExplainer } from './components/AlgorithmExplainer';
 import { SimulationControls } from './components/SimulationControls';
 import { ScenarioPresets } from './components/ScenarioPresets';
 import { StationDetailModal } from './components/StationDetailModal';
+import { StationManagementView } from './components/StationManagementView';
+import { AiPredictionModule } from './components/AiPredictionModule';
 import { ToastContainer } from './components/ToastContainer';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { playAlertSound } from './utils/audio';
-import { Activity, Wifi, Radio, Cpu, BookOpen, AlertTriangle } from 'lucide-react';
+import { Activity, Wifi, Radio, Cpu, BookOpen, AlertTriangle, Layers, Compass } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('stage');
@@ -27,6 +29,7 @@ export default function App() {
   const [speed, setSpeed] = useState<number>(1);
   const [showCarrierSenseRange, setShowCarrierSenseRange] = useState<boolean>(true);
   const [showInterferenceHeatmap, setShowInterferenceHeatmap] = useState<boolean>(true);
+  const [dynamicMobilityEnabled, setDynamicMobilityEnabled] = useState<boolean>(false);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState<boolean>(false);
 
@@ -309,6 +312,29 @@ export default function App() {
                   onToggleRange={() => setShowCarrierSenseRange((prev) => !prev)}
                   showInterferenceHeatmap={showInterferenceHeatmap}
                   onToggleHeatmap={() => setShowInterferenceHeatmap((prev) => !prev)}
+                  dynamicMobilityEnabled={dynamicMobilityEnabled}
+                  onToggleMobility={() => {
+                    setDynamicMobilityEnabled((prev) => {
+                      const next = !prev;
+                      if (engineRef.current) {
+                        engineRef.current.config.dynamicMobilityEnabled = next;
+                      }
+                      return next;
+                    });
+                  }}
+                  topologyMode={engine.config.topologyMode || 'CONCENTRIC_TIERS'}
+                  onChangeTopologyMode={(mode) => {
+                    if (engineRef.current) {
+                      engineRef.current.reorientStations(mode);
+                      setTick((t) => t + 1);
+                    }
+                  }}
+                  onReorientTopology={(mode) => {
+                    if (engineRef.current) {
+                      engineRef.current.reorientStations(mode);
+                      setTick((t) => t + 1);
+                    }
+                  }}
                 />
 
                 {/* Compact MAC Airtime Timeline strip */}
@@ -323,6 +349,7 @@ export default function App() {
                 <MetricsDashboard
                   metrics={engine.currentMetrics}
                   history={engine.metricsHistory}
+                  stations={engine.stations}
                   starvationThresholdMbps={toastSettings.throughputThresholdMbps}
                   isStarvationActive={isStarvationActive}
                   onOpenAlertSettings={() => setIsNotificationSettingsOpen(true)}
@@ -352,6 +379,43 @@ export default function App() {
               </div>
             </div>
 
+            {/* AI Collision Prediction & Prevention Engine */}
+            <AiPredictionModule
+              metrics={engine.currentMetrics}
+              config={engine.config}
+              history={engine.metricsHistory}
+              stations={engine.stations}
+              onChangeConfig={handleChangeConfig}
+              onReorientTopology={(mode) => {
+                if (engineRef.current) {
+                  engineRef.current.reorientStations(mode);
+                  setTick((t) => t + 1);
+                }
+              }}
+              onExecuteNormalcyStabilization={() => {
+                if (engineRef.current) {
+                  const res = engineRef.current.applyNormalcyStabilization();
+                  setTick((t) => t + 1);
+                  return res;
+                }
+                return {
+                  actionsTaken: [],
+                  previousMetrics: {
+                    collisionRatePct: engine.currentMetrics.collisionRatePct,
+                    throughputMbps: engine.currentMetrics.totalThroughputMbps,
+                    delayMs: engine.currentMetrics.averageDelayMs,
+                  },
+                };
+              }}
+              onApplyToast={(msg, type) => {
+                addToast({
+                  type,
+                  title: 'AI Prevention Applied',
+                  message: msg,
+                });
+              }}
+            />
+
             {/* Runtime MAC & Congestion Controls */}
             <SimulationControls
               config={engine.config}
@@ -359,6 +423,108 @@ export default function App() {
               qAgent={engine.qAgent}
               toastSettings={toastSettings}
               onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+            />
+
+            {/* Station Fleet Performance Management & Bottleneck Audit */}
+            <StationManagementView
+              stations={engine.stations}
+              onSelectStation={setSelectedStationId}
+              selectedStationId={selectedStationId}
+            />
+          </div>
+        )}
+
+        {/* TAB: Dedicated AI Collision Predictor & Prevention View */}
+        {activeTab === 'ai-predictor' && (
+          <div className="flex flex-col gap-6">
+            <AiPredictionModule
+              metrics={engine.currentMetrics}
+              config={engine.config}
+              history={engine.metricsHistory}
+              stations={engine.stations}
+              onChangeConfig={handleChangeConfig}
+              onReorientTopology={(mode) => {
+                if (engineRef.current) {
+                  engineRef.current.reorientStations(mode);
+                  setTick((t) => t + 1);
+                }
+              }}
+              onExecuteNormalcyStabilization={() => {
+                if (engineRef.current) {
+                  const res = engineRef.current.applyNormalcyStabilization();
+                  setTick((t) => t + 1);
+                  return res;
+                }
+                return {
+                  actionsTaken: [],
+                  previousMetrics: {
+                    collisionRatePct: engine.currentMetrics.collisionRatePct,
+                    throughputMbps: engine.currentMetrics.totalThroughputMbps,
+                    delayMs: engine.currentMetrics.averageDelayMs,
+                  },
+                };
+              }}
+              onApplyToast={(msg, type) => {
+                addToast({
+                  type,
+                  title: 'AI Prevention Applied',
+                  message: msg,
+                });
+              }}
+            />
+
+            {/* Deep Technical Overview of Prevention Methods */}
+            <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-5 text-xs text-slate-300">
+              <h4 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-sky-400" />
+                <span>How Alternative Prevention Methods Mitigate 802.11 Contention Collapse</span>
+              </h4>
+              <p className="text-slate-400 leading-relaxed mb-4">
+                When wireless node density surges, IEEE 802.11 CSMA/CA experiences exponential collision growth. As colliding stations repeatedly double their contention windows, airtime is squandered on unacknowledged transmissions, plunging aggregate throughput toward zero while queues overflow.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-[11px]">
+                <div className="bg-slate-950/60 p-3.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
+                  <div className="text-sky-400 font-semibold flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>RTS/CTS Virtual Carrier Sense</span>
+                  </div>
+                  <div className="text-slate-400 leading-relaxed">
+                    Exchanges micro-second Request-to-Send / Clear-to-Send frames before transmitting bulky 1500-byte payloads. Completely prevents hidden terminals from overlapping with concurrent transmissions.
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/60 p-3.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
+                  <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>802.11ax OFDMA Parallel RUs</span>
+                  </div>
+                  <div className="text-slate-400 leading-relaxed">
+                    Divides the 20MHz/40MHz carrier into parallel 26-tone Resource Units (RUs). The AP coordinator polls multiple stations in parallel via Trigger Frames, replacing stochastic backoffs with deterministic multi-user scheduling.
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/60 p-3.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
+                  <div className="text-purple-400 font-semibold flex items-center gap-1.5">
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Q-Learning &amp; Idle Sense CW</span>
+                  </div>
+                  <div className="text-slate-400 leading-relaxed">
+                    Observes channel idle slots and collision history with reinforcement learning to dynamically stabilize contention windows, avoiding the catastrophic reset to CWmin that triggers cyclic collision collapse.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: Dedicated Station Management View */}
+        {activeTab === 'stations' && (
+          <div className="flex flex-col gap-6">
+            <StationManagementView
+              stations={engine.stations}
+              onSelectStation={setSelectedStationId}
+              selectedStationId={selectedStationId}
             />
           </div>
         )}

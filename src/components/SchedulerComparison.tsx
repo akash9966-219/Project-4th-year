@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Station, TrafficSchedulerAlgorithm } from '../types/wlan';
 import { EDCA_DEFAULTS } from '../simulation/constants';
-import { Cpu, Check, BarChart2, ShieldAlert } from 'lucide-react';
+import { Cpu, Check, BarChart2, ShieldAlert, ArrowUpDown, AlertTriangle } from 'lucide-react';
 
 interface SchedulerComparisonProps {
   currentScheduler: TrafficSchedulerAlgorithm;
@@ -19,6 +19,7 @@ export const SchedulerComparison: React.FC<SchedulerComparisonProps> = ({
   onSelectScheduler,
   stations,
 }) => {
+  const [stationSortKey, setStationSortKey] = useState<'tput-desc' | 'tput-asc' | 'collision-desc' | 'delay-desc' | 'id-asc'>('tput-desc');
   const schedulers: Array<{
     id: TrafficSchedulerAlgorithm;
     name: string;
@@ -78,6 +79,39 @@ export const SchedulerComparison: React.FC<SchedulerComparisonProps> = ({
   // Calculate per-station delivered bytes and packets
   const clientStations = stations.filter((s) => s.role === 'STATION');
   const maxBytes = Math.max(1, ...clientStations.map((s) => s.bytesTransmitted));
+
+  // Sort client stations according to selected performance metric
+  const sortedStations = useMemo(() => {
+    const list = [...clientStations];
+    list.sort((a, b) => {
+      const aTput = a.bytesTransmitted;
+      const bTput = b.bytesTransmitted;
+      const aAtt = a.packetsTransmitted + a.collisionCount;
+      const bAtt = b.packetsTransmitted + b.collisionCount;
+      const aColRate = aAtt > 0 ? a.collisionCount / aAtt : 0;
+      const bColRate = bAtt > 0 ? b.collisionCount / bAtt : 0;
+      const aDelay = a.averageDelayMs || 0;
+      const bDelay = b.averageDelayMs || 0;
+
+      const aId = parseInt(a.id.replace(/\D/g, ''), 10) || 0;
+      const bId = parseInt(b.id.replace(/\D/g, ''), 10) || 0;
+
+      switch (stationSortKey) {
+        case 'tput-asc':
+          return aTput - bTput; // Lowest first (starved nodes)
+        case 'tput-desc':
+          return bTput - aTput; // Highest first
+        case 'collision-desc':
+          return bColRate - aColRate; // Highest collision rate first
+        case 'delay-desc':
+          return bDelay - aDelay; // Highest latency first
+        case 'id-asc':
+        default:
+          return aId - bId;
+      }
+    });
+    return list;
+  }, [clientStations, stationSortKey]);
 
   return (
     <div className="bg-slate-950 rounded-xl border border-slate-800/80 p-5 flex flex-col gap-6">
@@ -140,32 +174,66 @@ export const SchedulerComparison: React.FC<SchedulerComparisonProps> = ({
         })}
       </div>
 
-      {/* Per-Station Airtime Allocation Bar Chart */}
+      {/* Per-Station Airtime Allocation Bar Chart with Sorting */}
       <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
             <BarChart2 className="w-4 h-4 text-sky-400" />
-            <span>Station Throughput Distribution Under {schedulers.find(s => s.id === currentScheduler)?.name}</span>
+            <span>Station Performance Distribution Under {schedulers.find(s => s.id === currentScheduler)?.name}</span>
           </div>
-          <span className="text-xs text-slate-500">
-            Airtime fairness vs 802.11 Performance Anomaly
-          </span>
+
+          {/* Performance Sorting Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+            <ArrowUpDown className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-slate-500 text-[11px]">Sort:</span>
+            <select
+              value={stationSortKey}
+              onChange={(e) => setStationSortKey(e.target.value as any)}
+              className="bg-transparent text-slate-200 text-xs font-medium focus:outline-none cursor-pointer"
+            >
+              <option value="tput-desc">Throughput (Highest First)</option>
+              <option value="tput-asc">Throughput (Lowest / Starved First)</option>
+              <option value="collision-desc">💥 Collision Rate (Highest First)</option>
+              <option value="delay-desc">⏱️ Latency (Highest First)</option>
+              <option value="id-asc">Station Number (1-N)</option>
+            </select>
+          </div>
         </div>
 
         <div className="space-y-2 mt-2">
-          {clientStations.map((sta) => {
+          {sortedStations.map((sta) => {
             const pct = (sta.bytesTransmitted / maxBytes) * 100;
             const tputMb = (sta.bytesTransmitted * 8) / 1e6;
             const catDef = EDCA_DEFAULTS[sta.activeCategory];
+            const attempts = sta.packetsTransmitted + sta.collisionCount;
+            const collisionRatePct = attempts > 0 ? (sta.collisionCount / attempts) * 100 : 0;
+            const isStruggling = collisionRatePct >= 20 || sta.averageDelayMs >= 35 || sta.packetsLost > 0;
 
             return (
-              <div key={sta.id} className="flex items-center gap-3 text-xs">
-                <span className="font-mono text-slate-300 w-16 shrink-0">{sta.id}</span>
-                <span className="text-slate-500 text-[10px] w-20 shrink-0 truncate">
-                  {sta.phyRateMbps} Mbps · {sta.trafficPattern}
+              <div
+                key={sta.id}
+                className={`flex items-center gap-3 text-xs p-1.5 rounded-lg transition-colors ${
+                  isStruggling ? 'bg-red-950/20 border border-red-500/20' : 'hover:bg-slate-900/60'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 w-20 shrink-0">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: sta.color }}
+                  />
+                  <span className="font-mono text-slate-200 font-bold">{sta.id}</span>
+                  {isStruggling && (
+                    <span title="Node struggling with high collision rate or delay">
+                      <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+                    </span>
+                  )}
+                </div>
+
+                <span className="text-slate-500 text-[10px] w-28 shrink-0 truncate">
+                  {sta.phyRateMbps} Mbps · {sta.trafficPattern.replace('_', ' ')}
                 </span>
 
-                {/* Bar */}
+                {/* Progress Bar */}
                 <div className="flex-1 h-3.5 bg-slate-950 rounded overflow-hidden border border-slate-800/80 relative">
                   <div
                     className="h-full rounded transition-all duration-300"
@@ -179,7 +247,21 @@ export const SchedulerComparison: React.FC<SchedulerComparisonProps> = ({
                 <span className="font-mono text-slate-300 tabular-nums w-18 text-right shrink-0">
                   {tputMb.toFixed(2)} MB
                 </span>
-                <span className="font-mono text-slate-500 text-[10px] tabular-nums w-12 text-right shrink-0">
+
+                <span
+                  className={`font-mono text-[11px] tabular-nums w-14 text-right shrink-0 ${
+                    collisionRatePct >= 20 ? 'text-red-400 font-bold' : 'text-slate-400'
+                  }`}
+                  title={`Collisions: ${sta.collisionCount} / ${attempts}`}
+                >
+                  {collisionRatePct.toFixed(0)}% col
+                </span>
+
+                <span
+                  className={`font-mono text-[10px] tabular-nums w-14 text-right shrink-0 ${
+                    sta.averageDelayMs >= 35 ? 'text-amber-400 font-bold' : 'text-slate-500'
+                  }`}
+                >
                   {sta.averageDelayMs.toFixed(1)}ms
                 </span>
               </div>

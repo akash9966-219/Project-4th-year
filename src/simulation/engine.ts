@@ -8,6 +8,7 @@ import {
   AQMType,
   ChannelState,
   CongestionControlAlgorithm,
+  DelayHistogramBin,
   EDCAQueueState,
   Packet,
   QLearningAgentState,
@@ -15,6 +16,7 @@ import {
   SimulationMetrics,
   Station,
   TimelineSlotEvent,
+  TopologyOrientationMode,
   TrafficPattern,
   TrafficSchedulerAlgorithm,
 } from '../types/wlan';
@@ -47,6 +49,9 @@ export class WirelessSimulationEngine {
   private codelDropNextUs: Map<string, number> = new Map();
   private codelDroppingState: Map<string, boolean> = new Map();
 
+  // Packet delay distribution buffer (stores recent delivered packet delays across network)
+  private recentDeliveredPackets: Array<{ delayMs: number; category: AccessCategory }> = [];
+
   constructor(customConfig?: Partial<SimulationConfig>) {
     this.config = {
       wifiStandard: '802.11ax',
@@ -66,6 +71,8 @@ export class WirelessSimulationEngine {
       simSpeedMultiplier: 1.0,
       enableNoiseChannelError: false,
       channelPerPct: 2.0,
+      dynamicMobilityEnabled: false,
+      mobilityPattern: 'HYBRID',
       ...customConfig,
     };
 
@@ -110,6 +117,17 @@ export class WirelessSimulationEngine {
     this.averageThroughputHistory.clear();
     this.codelDropNextUs.clear();
     this.codelDroppingState.clear();
+
+    this.recentDeliveredPackets = [];
+    const seedCategories: AccessCategory[] = ['AC_VO', 'AC_VI', 'AC_BE', 'AC_BK'];
+    for (let i = 0; i < 40; i++) {
+      const cat = seedCategories[i % seedCategories.length];
+      const baseDelay = cat === 'AC_VO' ? 1.5 + Math.random() * 4 :
+                        cat === 'AC_VI' ? 5.5 + Math.random() * 10 :
+                        cat === 'AC_BE' ? 12 + Math.random() * 22 :
+                        20 + Math.random() * 35;
+      this.recentDeliveredPackets.push({ delayMs: Math.round(baseDelay * 10) / 10, category: cat });
+    }
 
     this.initStations();
     this.initMetrics();
@@ -173,7 +191,7 @@ export class WirelessSimulationEngine {
     };
     this.stations.push(this.apStation);
 
-    // Populate client wireless stations arranged radially around AP
+    // Populate client wireless stations arranged in structured concentric RF coverage rings
     const n = this.config.stationCount;
     const trafficPatterns: TrafficPattern[] = [
       'VOICE',
@@ -184,18 +202,18 @@ export class WirelessSimulationEngine {
     ];
 
     for (let i = 0; i < n; i++) {
-      const angle = (2 * Math.PI * i) / n + (Math.random() * 0.2 - 0.1);
-      // Realistic distances from 4 meters to 35 meters
-      const radius = 6 + Math.random() * 24;
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-      const dist = Math.sqrt(x * x + y * y);
+      const { x, y, radius, angle } = this.calculateStationPlacement(
+        i,
+        n,
+        this.config.topologyMode || 'CONCENTRIC_TIERS'
+      );
+      const dist = radius;
 
       // Path loss model: Free-space path loss PL(d) = 20 log10(d) + 40 dB at 5GHz
-      // Approximate SNR in dB from 35 dB (close) down to 14 dB (edge)
-      const snrDb = Math.max(12, Math.min(38, 42 - 0.9 * dist + (Math.random() * 2 - 1)));
+      // Realistic SNR in dB from 36 dB (close) down to 14 dB (edge)
+      const snrDb = Math.max(12, Math.min(38, 42 - 0.88 * dist));
 
-      // Approximate 802.11 rate based on SNR
+      // Realistic 802.11 rate based on SNR
       let phyRateMbps = 54;
       if (this.config.wifiStandard === '802.11ax') {
         if (snrDb >= 32) phyRateMbps = 143.4;      // MCS 11
@@ -217,6 +235,15 @@ export class WirelessSimulationEngine {
       else if (pattern === 'VIDEO_STREAM') pps = 450;
       else if (pattern === 'BACKGROUND_BULK') pps = 300;
       else if (pattern === 'BEST_EFFORT') pps = 200;
+
+      const paths: Array<'CIRCULAR' | 'FIGURE_EIGHT' | 'RADIAL_CONVERGE' | 'RANDOM_WAYPOINT'> = [
+        'CIRCULAR',
+        'FIGURE_EIGHT',
+        'RADIAL_CONVERGE',
+        'CIRCULAR',
+      ];
+      const assignedPath = paths[i % paths.length];
+      const mobSpeed = 1.2 + (i % 5) * 0.8; // 1.2 m/s to 4.4 m/s walking to running speed
 
       const station: Station = {
         id: `STA-${(i + 1).toString().padStart(2, '0')}`,
@@ -244,6 +271,10 @@ export class WirelessSimulationEngine {
         averageDelayMs: 0,
         lastDelaySamples: [],
         color: STATION_PALETTE[i % STATION_PALETTE.length],
+        mobilityPath: assignedPath,
+        mobilitySpeed: mobSpeed,
+        baseAngle: angle,
+        baseRadius: radius,
       };
 
       this.averageThroughputHistory.set(station.id, 1.0);
@@ -265,6 +296,15 @@ export class WirelessSimulationEngine {
       collisionRatePct: 0,
       averageDelayMs: 0,
       jitterMs: 0,
+      p95DelayMs: 0,
+      delayHistogram: [
+        { binLabel: '< 5ms', minMs: 0, maxMs: 5, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+        { binLabel: '5–15ms', minMs: 5, maxMs: 15, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+        { binLabel: '15–30ms', minMs: 15, maxMs: 30, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+        { binLabel: '30–50ms', minMs: 30, maxMs: 50, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+        { binLabel: '50–80ms', minMs: 50, maxMs: 80, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+        { binLabel: '> 80ms', minMs: 80, maxMs: Infinity, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+      ],
       jainsFairnessIndex: 1.0,
       activeStationsCount: this.stations.length - 1,
       totalPacketsSent: 0,
@@ -437,10 +477,341 @@ export class WirelessSimulationEngine {
 
     // Periodically update metrics & Q-learning agent
     if (this.currentTimeUs - this.lastMetricsUpdateTimeUs >= 50_000) { // Every 50ms sim time
+      if (this.config.dynamicMobilityEnabled) {
+        this.updateStationMobility(this.currentTimeUs / 1_000_000);
+      }
       this.updateMetrics();
       this.updateQLearningAgent();
       this.lastMetricsUpdateTimeUs = this.currentTimeUs;
     }
+  }
+
+  /**
+   * Update dynamic station positions along predefined paths and recalculate distances, SNR, and PHY rates.
+   */
+  public updateStationMobility(simTimeSec: number): void {
+    for (const sta of this.stations) {
+      if (sta.role === 'AP') continue;
+      const baseAng = sta.baseAngle || 0;
+      const baseRad = sta.baseRadius || 18;
+      const speed = sta.mobilitySpeed || 2.0;
+      const pathType = sta.mobilityPath || 'CIRCULAR';
+
+      let newX = sta.x;
+      let newY = sta.y;
+
+      if (pathType === 'CIRCULAR') {
+        // Orbit around AP
+        const angularVelocity = (speed / baseRad) * 0.7;
+        const currentAng = baseAng + angularVelocity * simTimeSec;
+        newX = Math.cos(currentAng) * baseRad;
+        newY = Math.sin(currentAng) * baseRad;
+      } else if (pathType === 'FIGURE_EIGHT') {
+        // Lissajous / lemniscate path
+        const t = simTimeSec * (speed * 0.12) + baseAng;
+        const scale = Math.max(12, baseRad);
+        newX = (scale * Math.cos(t)) / (1 + Math.sin(t) * Math.sin(t));
+        newY = (scale * Math.sin(t) * Math.cos(t)) / (1 + Math.sin(t) * Math.sin(t));
+      } else if (pathType === 'RADIAL_CONVERGE') {
+        // Move towards and away from AP
+        const cycle = Math.sin(simTimeSec * 0.4 + baseAng);
+        const dynamicRad = 6 + (baseRad - 6) * (0.5 + 0.5 * cycle);
+        newX = Math.cos(baseAng) * dynamicRad;
+        newY = Math.sin(baseAng) * dynamicRad;
+      } else {
+        // Random wander
+        const wanderAng = baseAng + Math.sin(simTimeSec * 0.2 + baseRad) * 0.8;
+        const wanderRad = Math.max(5, Math.min(32, baseRad + Math.cos(simTimeSec * 0.3) * 6));
+        newX = Math.cos(wanderAng) * wanderRad;
+        newY = Math.sin(wanderAng) * wanderRad;
+      }
+
+      sta.x = newX;
+      sta.y = newY;
+      const newDist = Math.max(1, Math.hypot(newX, newY));
+      sta.distanceToAp = newDist;
+
+      // Dynamic path-loss recalculation: SNR decreases with distance
+      const dynamicSnr = Math.max(12, Math.min(38, 42 - 0.9 * newDist));
+      sta.snrDb = Math.round(dynamicSnr * 10) / 10;
+
+      // Dynamic PHY adaptation based on distance/SNR (802.11 Link Adaptation)
+      if (this.config.wifiStandard === '802.11ax') {
+        if (dynamicSnr >= 32) sta.phyRateMbps = 143.4;
+        else if (dynamicSnr >= 26) sta.phyRateMbps = 114.7;
+        else if (dynamicSnr >= 20) sta.phyRateMbps = 86.0;
+        else if (dynamicSnr >= 15) sta.phyRateMbps = 57.4;
+        else sta.phyRateMbps = 28.7;
+      } else {
+        if (dynamicSnr >= 28) sta.phyRateMbps = 54;
+        else if (dynamicSnr >= 22) sta.phyRateMbps = 48;
+        else if (dynamicSnr >= 18) sta.phyRateMbps = 36;
+        else if (dynamicSnr >= 14) sta.phyRateMbps = 24;
+        else sta.phyRateMbps = 12;
+      }
+    }
+  }
+
+  /**
+   * Compute pristine polar & spatial coordinates for a station based on the selected topology orientation mode
+   */
+  public calculateStationPlacement(
+    index: number,
+    total: number,
+    mode: TopologyOrientationMode = 'CONCENTRIC_TIERS'
+  ): { x: number; y: number; radius: number; angle: number } {
+    if (total <= 0) return { x: 0, y: 0, radius: 0, angle: 0 };
+
+    switch (mode) {
+      case 'RADIAL_STAR': {
+        // Distribute along symmetric radial spokes radiating from the central AP
+        const spokes = Math.min(8, Math.max(3, Math.ceil(total / 2)));
+        const spokeIndex = index % spokes;
+        const tierOnSpoke = Math.floor(index / spokes);
+        const radius = Math.min(27, 10 + tierOnSpoke * 8);
+        const angle = -Math.PI / 2 + (2 * Math.PI * spokeIndex) / spokes;
+        return {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+          radius,
+          angle,
+        };
+      }
+
+      case 'UNIFORM_HEXAGONAL': {
+        // Hexagonal lattice geometry
+        const hexRing = index < 6 ? 1 : index < 18 ? 2 : 3;
+        const radius = hexRing === 1 ? 12 : hexRing === 2 ? 20 : 27;
+        const stationsInRing =
+          hexRing === 1 ? Math.min(total, 6) : hexRing === 2 ? Math.min(total - 6, 12) : Math.max(1, total - 18);
+        const ringOffset = hexRing === 1 ? index : hexRing === 2 ? index - 6 : index - 18;
+        const angle =
+          -Math.PI / 2 +
+          (2 * Math.PI * ringOffset) / stationsInRing +
+          (hexRing % 2 === 0 ? Math.PI / stationsInRing : 0);
+        return {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+          radius,
+          angle,
+        };
+      }
+
+      case 'PERIMETER_RING': {
+        // Pure circular perimeter ring around AP at 21m
+        const radius = 21;
+        const angle = -Math.PI / 2 + (2 * Math.PI * index) / total;
+        return {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+          radius,
+          angle,
+        };
+      }
+
+      case 'HIDDEN_TERMINAL_PAIRS': {
+        // Half on the West (-23m) and half on the East (+23m)
+        // Distance between East & West is 46m (> 35m CCA range), creating classic hidden node contention
+        const isWest = index % 2 === 0;
+        const groupIndex = Math.floor(index / 2);
+        const groupTotal = Math.max(1, Math.ceil(total / 2));
+        const spreadY = groupTotal === 1 ? 0 : -8 + (16 * groupIndex) / (groupTotal - 1);
+        const x = isWest ? -23 : 23;
+        const y = spreadY;
+        const radius = Math.hypot(x, y);
+        const angle = Math.atan2(y, x);
+        return { x, y, radius, angle };
+      }
+
+      case 'CONCENTRIC_TIERS':
+      default: {
+        // Balanced RF concentric tiers: Inner (10m, High SNR), Mid (18.5m, Balanced), Edge (27m, Cell Edge)
+        // Stations are distributed evenly without zigzagging or clashing
+        let countInTier = total;
+        let indexInTier = index;
+        let radius = 10;
+        let staggerOffset = 0;
+
+        if (total <= 3) {
+          countInTier = total;
+          indexInTier = index;
+          radius = 16;
+        } else if (total <= 6) {
+          const innerCount = Math.floor(total / 2);
+          const outerCount = total - innerCount;
+          if (index < innerCount) {
+            countInTier = innerCount;
+            indexInTier = index;
+            radius = 12;
+            staggerOffset = 0;
+          } else {
+            countInTier = outerCount;
+            indexInTier = index - innerCount;
+            radius = 23;
+            staggerOffset = Math.PI / outerCount;
+          }
+        } else {
+          // 3 balanced tiers
+          const innerCount = Math.max(2, Math.round(total * 0.25));
+          const midCount = Math.max(3, Math.round(total * 0.45));
+          const outerCount = Math.max(1, total - innerCount - midCount);
+
+          if (index < innerCount) {
+            countInTier = innerCount;
+            indexInTier = index;
+            radius = 10;
+            staggerOffset = 0;
+          } else if (index < innerCount + midCount) {
+            countInTier = midCount;
+            indexInTier = index - innerCount;
+            radius = 18.5;
+            staggerOffset = Math.PI / midCount; // Stagger so they don't shadow inner tier
+          } else {
+            countInTier = outerCount;
+            indexInTier = index - (innerCount + midCount);
+            radius = 27;
+            staggerOffset = Math.PI / (2 * outerCount);
+          }
+        }
+
+        const angle = -Math.PI / 2 + staggerOffset + (2 * Math.PI * indexInTier) / countInTier;
+        return {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+          radius,
+          angle,
+        };
+      }
+    }
+  }
+
+  /**
+   * Re-orients all stations in structured concentric RF coverage rings or selected topology mode
+   */
+  public reorientStations(mode?: TopologyOrientationMode): void {
+    if (mode) {
+      this.config.topologyMode = mode;
+    }
+    const targetMode = mode || this.config.topologyMode || 'CONCENTRIC_TIERS';
+    const clients = this.stations.filter((s) => s.role === 'STATION');
+    const n = clients.length;
+    if (n === 0) return;
+
+    for (let i = 0; i < n; i++) {
+      const sta = clients[i];
+      const { x, y, radius, angle } = this.calculateStationPlacement(i, n, targetMode);
+
+      sta.x = x;
+      sta.y = y;
+      sta.distanceToAp = radius;
+      sta.baseAngle = angle;
+      sta.baseRadius = radius;
+
+      const snrDb = Math.max(12, Math.min(38, 42 - 0.88 * radius));
+      sta.snrDb = Math.round(snrDb * 10) / 10;
+
+      if (this.config.wifiStandard === '802.11ax') {
+        if (snrDb >= 32) sta.phyRateMbps = 143.4;
+        else if (snrDb >= 26) sta.phyRateMbps = 114.7;
+        else if (snrDb >= 20) sta.phyRateMbps = 86.0;
+        else if (snrDb >= 15) sta.phyRateMbps = 57.4;
+        else sta.phyRateMbps = 28.7;
+      } else {
+        if (snrDb >= 28) sta.phyRateMbps = 54;
+        else if (snrDb >= 22) sta.phyRateMbps = 48;
+        else if (snrDb >= 18) sta.phyRateMbps = 36;
+        else if (snrDb >= 14) sta.phyRateMbps = 24;
+        else sta.phyRateMbps = 12;
+      }
+    }
+  }
+
+  /**
+   * Holistic Autonomous AI Normalcy Stabilization Controller
+   * Rebalances MAC Backoff, RTS/CTS Handshake, AQM Bufferbloat, and Spatial Topology
+   */
+  public applyNormalcyStabilization(): {
+    actionsTaken: string[];
+    previousMetrics: { collisionRatePct: number; throughputMbps: number; delayMs: number };
+  } {
+    const actionsTaken: string[] = [];
+    const prev = {
+      collisionRatePct: this.currentMetrics.collisionRatePct,
+      throughputMbps: this.currentMetrics.totalThroughputMbps,
+      delayMs: this.currentMetrics.averageDelayMs,
+    };
+
+    const clients = this.stations.filter((s) => s.role === 'STATION');
+
+    // 1. Resolve Hidden Node Contention with Adaptive RTS/CTS
+    let hasDistantPairs = false;
+    for (let i = 0; i < clients.length; i++) {
+      for (let j = i + 1; j < clients.length; j++) {
+        if (Math.hypot(clients[i].x - clients[j].x, clients[i].y - clients[j].y) > 35) {
+          hasDistantPairs = true;
+          break;
+        }
+      }
+      if (hasDistantPairs) break;
+    }
+
+    if (!this.config.rtsCtsEnabled && (hasDistantPairs || this.currentMetrics.collisionRatePct > 15)) {
+      this.config.rtsCtsEnabled = true;
+      this.config.rtsThresholdBytes = 500;
+      actionsTaken.push('Engaged adaptive RTS/CTS virtual carrier sensing (500B threshold) to eliminate hidden terminal collisions');
+    }
+
+    // 2. Prevent Binary Exponential Backoff (BEB) Reset Collapse
+    if (this.config.congestionAlgorithm === 'STANDARD_BEB') {
+      this.config.congestionAlgorithm = 'IDLE_SENSE';
+      actionsTaken.push('Transitioned MAC Contention Algorithm from standard BEB to Idle Sense Pareto-optimal CW control');
+    }
+
+    // 3. Normalize Contention Windows & Backoff Counters for all client stations
+    for (const sta of clients) {
+      sta.currentCw = Math.min(63, Math.max(15, sta.currentCw));
+      sta.currentBackoff = Math.floor(Math.random() * (sta.currentCw + 1));
+      sta.deferSlotsRemaining = 2;
+      sta.macState = 'IDLE';
+      sta.isTransmitting = false;
+
+      // Drain excessive queue backlog to eliminate bufferbloat delay runaway
+      for (const cat of ['AC_VO', 'AC_VI', 'AC_BE', 'AC_BK'] as AccessCategory[]) {
+        const q = sta.queues[cat];
+        if (q && q.packets.length > 16) {
+          q.packets = q.packets.slice(-12); // Keep fresh packets
+        }
+      }
+    }
+
+    // 4. Curb Bufferbloat with CoDel Active Queue Management
+    if (this.config.aqmMode === 'FIFO_DROP_TAIL' || this.currentMetrics.averageDelayMs > 18) {
+      this.config.aqmMode = 'CODEL';
+      this.config.codelTargetMs = 5;
+      this.config.codelIntervalMs = 100;
+      actionsTaken.push('Activated CoDel Active Queue Management (5ms sojourn target) to eliminate bufferbloat and retry packet storms');
+    }
+
+    // 5. Deploy Wi-Fi 6 OFDMA Parallel RU Scheduling if dense client population
+    if (clients.length >= 14 && this.config.trafficScheduler !== 'OFDMA_MULTI_USER') {
+      this.config.wifiStandard = '802.11ax';
+      this.config.trafficScheduler = 'OFDMA_MULTI_USER';
+      actionsTaken.push('Upgraded BSS scheduler to 802.11ax OFDMA Multi-User parallel Trigger Frames');
+    }
+
+    // 6. Re-balance Spatial Topology if currently in hidden node split
+    if (this.config.topologyMode === 'HIDDEN_TERMINAL_PAIRS') {
+      this.config.topologyMode = 'CONCENTRIC_TIERS';
+      this.reorientStations('CONCENTRIC_TIERS');
+      actionsTaken.push('Re-oriented stations into balanced concentric RF coverage tiers');
+    }
+
+    // 7. Reset channel state to clear any ongoing collision lock
+    this.channel.status = 'IDLE';
+    this.channel.activeTransmitters = [];
+    this.channel.txEndUs = this.currentTimeUs;
+
+    return { actionsTaken, previousMetrics: prev };
   }
 
   /**
@@ -593,6 +964,11 @@ export class WirelessSimulationEngine {
           sta.bytesTransmitted += pkt.sizeBytes;
           sta.lastDelaySamples.push(delayMs);
           if (sta.lastDelaySamples.length > 20) sta.lastDelaySamples.shift();
+
+          this.recentDeliveredPackets.push({ delayMs, category: sta.activeCategory });
+          if (this.recentDeliveredPackets.length > 300) {
+            this.recentDeliveredPackets.shift();
+          }
 
           const sum = sta.lastDelaySamples.reduce((a, b) => a + b, 0);
           sta.averageDelayMs = sum / sta.lastDelaySamples.length;
@@ -823,6 +1199,15 @@ export class WirelessSimulationEngine {
       const q = sta.queues[sta.activeCategory];
       if (q.packets.length > 0) {
         const pkt = q.packets.shift()!;
+        const delayMs = (this.currentTimeUs - pkt.creationTimeUs) / 1000;
+        sta.lastDelaySamples.push(delayMs);
+        if (sta.lastDelaySamples.length > 20) sta.lastDelaySamples.shift();
+
+        this.recentDeliveredPackets.push({ delayMs, category: sta.activeCategory });
+        if (this.recentDeliveredPackets.length > 300) {
+          this.recentDeliveredPackets.shift();
+        }
+
         q.totalDelivered++;
         sta.packetsTransmitted++;
         sta.bytesTransmitted += pkt.sizeBytes;
@@ -967,6 +1352,42 @@ export class WirelessSimulationEngine {
       AC_BK: avgDelayMs * 1.8,
     };
 
+    // Calculate live delay distribution histogram across the network
+    const bins: DelayHistogramBin[] = [
+      { binLabel: '< 5ms', minMs: 0, maxMs: 5, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+      { binLabel: '5–15ms', minMs: 5, maxMs: 15, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+      { binLabel: '15–30ms', minMs: 15, maxMs: 30, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+      { binLabel: '30–50ms', minMs: 30, maxMs: 50, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+      { binLabel: '50–80ms', minMs: 50, maxMs: 80, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+      { binLabel: '> 80ms', minMs: 80, maxMs: Infinity, totalCount: 0, percentage: 0, AC_VO: 0, AC_VI: 0, AC_BE: 0, AC_BK: 0 },
+    ];
+
+    const totalSamples = this.recentDeliveredPackets.length;
+    for (const item of this.recentDeliveredPackets) {
+      const d = item.delayMs;
+      for (const bin of bins) {
+        if (d >= bin.minMs && d < bin.maxMs) {
+          bin.totalCount++;
+          bin[item.category]++;
+          break;
+        }
+      }
+    }
+
+    if (totalSamples > 0) {
+      for (const bin of bins) {
+        bin.percentage = Math.round((bin.totalCount / totalSamples) * 1000) / 10;
+      }
+    }
+
+    // P95 Delay calculation
+    let p95DelayMs = avgDelayMs * 1.5;
+    if (this.recentDeliveredPackets.length > 0) {
+      const sorted = this.recentDeliveredPackets.map(p => p.delayMs).sort((a, b) => a - b);
+      const p95Idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+      p95DelayMs = Math.round(sorted[p95Idx] * 10) / 10;
+    }
+
     this.currentMetrics = {
       timestampUs: this.currentTimeUs,
       totalThroughputMbps: Math.round(throughputMbps * 100) / 100,
@@ -974,6 +1395,8 @@ export class WirelessSimulationEngine {
       collisionRatePct: Math.min(100, Math.round(collisionRatePct * 10) / 10),
       averageDelayMs: Math.round(avgDelayMs * 10) / 10,
       jitterMs: Math.round(jitterMs * 10) / 10,
+      p95DelayMs,
+      delayHistogram: bins,
       jainsFairnessIndex: Math.round(jainIndex * 1000) / 1000,
       activeStationsCount: clientStations.length,
       totalPacketsSent: this.packetsDeliveredLastInterval,
