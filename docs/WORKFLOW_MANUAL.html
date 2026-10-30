@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IEEE 802.11 WLAN Lab — Developer Workflow & Setup Manual</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --primary: #0284c7;
+      --primary-dark: #0369a1;
+      --bg: #0b0f19;
+      --surface: #111827;
+      --surface-border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --code-bg: #1e293b;
+      --accent: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #ffffff;
+      color: #0f172a;
+      line-height: 1.55;
+      font-size: 13.5px;
+      padding: 32px 48px;
+    }
+
+    @media screen {
+      body {
+        max-width: 900px;
+        margin: 0 auto;
+        background: #f8fafc;
+        color: #1e293b;
+        padding: 40px 24px;
+      }
+      .manual-container {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);
+        padding: 48px 56px;
+      }
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: #ffffff;
+        color: #000000;
+        font-size: 11pt;
+      }
+      .manual-container {
+        border: none;
+        padding: 0;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+    }
+
+    .header-banner {
+      background: #0f172a;
+      color: #ffffff;
+      border-radius: 10px;
+      padding: 28px 32px;
+      margin-bottom: 28px;
+    }
+
+    .header-banner h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .header-banner p {
+      color: #bae6fd;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .meta-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0369a1;
+      border-bottom: 1.5px solid #0284c7;
+      padding-bottom: 4px;
+      margin-top: 28px;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+
+    p {
+      margin-bottom: 10px;
+      color: #334155;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px 0;
+      font-size: 12px;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: #0f172a;
+      text-align: left;
+      padding: 8px 12px;
+      font-weight: 700;
+      border: 1px solid #cbd5e1;
+    }
+
+    td {
+      padding: 7px 12px;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    code, .code-inline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 5px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin: 10px 0 16px 0;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    .step-card {
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+
+    .step-badge {
+      display: inline-block;
+      background: #0284c7;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .step-title {
+      font-weight: 700;
+      font-size: 13.5px;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .btn-print {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.2);
+    }
+
+    .btn-print:hover {
+      background: #0369a1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="manual-container">
+    <div class="no-print" style="display: flex; justify-content: flex-end;">
+      <button class="btn-print" onclick="window.print()">
+        🖨️ Print to PDF / Save as PDF
+      </button>
+    </div>
+
+    <!-- Header Banner -->
+    <div class="header-banner">
+      <h1>IEEE 802.11 WLAN Congestion &amp; Scheduling Lab</h1>
+      <p>Local VS Code Setup, Project Workload Map &amp; Developer Execution Manual</p>
+      <div class="meta-tag">Stack: React 19 SPA · Node.js Express Backend · Vite 8 · Tailwind CSS v4 · TypeScript</div>
+    </div>
+
+    <!-- Section 1 -->
+    <h2>1. Repository Workload &amp; File Tree</h2>
+    <p>Paste the following directory structure and files into your VS Code laptop workspace:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 32%;">File Path</th>
+          <th>Role &amp; Architectural Responsibility</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>index.html</code></td>
+          <td>HTML5 entry point hosting canvas container, Plus Jakarta Sans &amp; JetBrains Mono fonts.</td>
+        </tr>
+        <tr>
+          <td><code>package.json</code></td>
+          <td>NPM package definitions, scripts (<code>tsx server.ts</code>), Express, React 19, Recharts, Vite 8, jsPDF.</td>
+        </tr>
+        <tr>
+          <td><code>server.ts</code></td>
+          <td>Full-stack Express proxy hosting <code>/api/ai-collision-predict</code> and mounting Vite dev middleware.</td>
+        </tr>
+        <tr>
+          <td><code>tsconfig.json</code></td>
+          <td>TypeScript configuration enforcing ES2022, bundler module resolution, and path aliases.</td>
+        </tr>
+        <tr>
+          <td><code>vite.config.ts</code></td>
+          <td>Vite build configuration loading <code>@tailwindcss/vite</code> and <code>@vitejs/plugin-react</code>.</td>
+        </tr>
+        <tr>
+          <td><code>.env.example / .env</code></td>
+          <td>Environment configurations for local port (3000) and optional Gemini AI API key.</td>
+        </tr>
+        <tr>
+          <td><code>src/main.tsx</code></td>
+          <td>React 19 entry point initializing root DOM element.</td>
+        </tr>
+        <tr>
+          <td><code>src/App.tsx</code></td>
+          <td>Main application view, tabs coordinator, simulation tick loop, and notification toasts.</td>
+        </tr>
+        <tr>
+          <td><code>src/index.css</code></td>
+          <td>Global CSS importing Tailwind CSS v4 (<code>@import "tailwindcss";</code>) and styling scrollbars.</td>
+        </tr>
+        <tr>
+          <td><code>src/types/wlan.ts</code></td>
+          <td>TypeScript interfaces (EDCA queues, Bianchi metrics, AI predictions, Normalcy health reports).</td>
+        </tr>
+        <tr>
+          <td><code>src/simulation/constants.ts</code></td>
+          <td>IEEE 802.11 standards timing constants (SIFS=16µs, DIFS=34µs, slot=9µs, EDCA AIFSN/CW bounds).</td>
+        </tr>
+        <tr>
+          <td><code>src/simulation/engine.ts</code></td>
+          <td>Discrete-event simulation engine, MAC backoff countdown, collision logic, and normalcy controller.</td>
+        </tr>
+        <tr>
+          <td><code>src/simulation/bianchi.ts</code></td>
+          <td>Markov chain analytical solver computing theoretical conditional collision probability <i>p</i> and throughput.</td>
+        </tr>
+        <tr>
+          <td><code>src/services/aiPredictionService.ts</code></td>
+          <td>Client AI service: queries <code>/api/ai-collision-predict</code> with Bianchi neural heuristic fallback.</td>
+        </tr>
+        <tr>
+          <td><code>src/utils/audio.ts</code></td>
+          <td>Web Audio API alert synthesizer generating warning and recovery audio tones without MP3 assets.</td>
+        </tr>
+        <tr>
+          <td><code>src/utils/pdfGenerator.ts</code></td>
+          <td>Client-side jsPDF document generator creating publication-grade developer guide PDF downloads.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/AiPredictionModule.tsx</code></td>
+          <td>AI Contention Collapse HUD, One-Click Normalcy Stabilization button, and Autonomous Governor.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/NetworkCanvas.tsx</code></td>
+          <td>60 FPS interactive HTML5 Canvas RF arena rendering AP, stations, carrier sense ranges, and collision pulses.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/AirtimeTimeline.tsx</code></td>
+          <td>Live airtime Gantt chart displaying DIFS, random backoff slots, DATA, SIFS, and ACK confirmation frames.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/MetricsDashboard.tsx</code></td>
+          <td>Real-time HUD cards tracking throughput (Mbps), collision rate (%), queuing delay, and Jain's fairness index.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/BianchiValidationChart.tsx</code></td>
+          <td>Interactive Recharts validation curves comparing live simulation empirical data against Bianchi formulas.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/SchedulerComparison.tsx</code></td>
+          <td>Comparative testbench for Round Robin, Proportional Fair, DRR, and 802.11ax OFDMA parallel scheduling.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/StationManagementView.tsx</code></td>
+          <td>Fleet management table listing station coordinates, SNR, MCS rate, queue backlogs, and bottleneck status.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/SimulationControls.tsx</code></td>
+          <td>Interactive controls for station count, CWmin, CWmax, RTS/CTS thresholds, and AQM queue modes.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/ScenarioPresets.tsx</code></td>
+          <td>Scenario presets: Dense Auditorium, VoIP Prioritization, Hidden Terminals, Bufferbloat Testbench.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- Section 2 -->
+    <h2>2. Recommended VS Code Extensions</h2>
+    <p>Install these extensions in VS Code (shortcut: <code>Ctrl + Shift + X</code> or <code>Cmd + Shift + X</code>):</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 28%;">Extension Name</th>
+          <th style="width: 32%;">Extension ID</th>
+          <th>Key Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>ESLint</strong></td>
+          <td><code>dbaeumer.vscode-eslint</code></td>
+          <td>Real-time syntax linting and TypeScript style error highlighting.</td>
+        </tr>
+        <tr>
+          <td><strong>Prettier</strong></td>
+          <td><code>esbenp.prettier-vscode</code></td>
+          <td>Automated formatting on save for TSX, TS, CSS, and JSON files.</td>
+        </tr>
+        <tr>
+          <td><strong>Tailwind CSS IntelliSense</strong></td>
+          <td><code>bradlc.vscode-tailwindcss</code></td>
+          <td>Class autocomplete, color previews, and hover documentation for Tailwind v4.</td>
+        </tr>
+        <tr>
+          <td><strong>TypeScript Language Tools</strong></td>
+          <td><code>ms-vscode.vscode-typescript-next</code></td>
+          <td>High-performance language server support and intelligent auto-imports.</td>
+        </tr>
+        <tr>
+          <td><strong>Pretty TypeScript Errors</strong></td>
+          <td><code>yoavbls.pretty-ts-errors</code></td>
+          <td>Formats complex TypeScript type mismatch errors into clean, readable cards.</td>
+        </tr>
+        <tr>
+          <td><strong>DotENV</strong></td>
+          <td><code>mikestead.dotenv</code></td>
+          <td>Syntax highlighting and variable validation in <code>.env</code> and <code>.env.example</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Auto Rename Tag</strong></td>
+          <td><code>formulahendry.auto-rename-tag</code></td>
+          <td>Automatically renames matching paired JSX and HTML tags.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Section 3 -->
+    <h2>3. Complete Step-by-Step Execution Workflow</h2>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 1</span>
+      <div class="step-title">Prerequisites Check</div>
+      <p>Ensure Node.js 20 or higher is installed on your laptop:</p>
+      <pre>node -v    # Must be v20.x or v22.x
+npm -v     # Must be v10.x or higher</pre>
+    </div>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 2</span>
+      <div class="step-title">Workspace Folder Setup</div>
+      <p>Create a directory on your machine and open it in VS Code:</p>
+      <pre>mkdir ieee-80211-wlan-lab
+cd ieee-80211-wlan-lab
+code .</pre>
+    </div>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 3</span>
+      <div class="step-title">Environment File Configuration (.env)</div>
+      <p>Create a <code>.env</code> file in your project root directory:</p>
+      <pre>PORT=3000
+# Optional: Provide Gemini API Key for online reasoning (fallback engine runs locally if omitted)
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY_HERE"</pre>
+    </div>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 4</span>
+      <div class="step-title">Install All Dependencies</div>
+      <p>Run the package manager inside the project root terminal:</p>
+      <pre>npm install</pre>
+    </div>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 5</span>
+      <div class="step-title">Launch Development Server</div>
+      <p>Start the full-stack server running Express and Vite together on port 3000:</p>
+      <pre>npm run dev</pre>
+      <p>The console will display: <code>Server listening on port 3000</code>.</p>
+    </div>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 6</span>
+      <div class="step-title">Open in Web Browser</div>
+      <p>Open Google Chrome, Brave, or Firefox and navigate to:</p>
+      <pre>http://localhost:3000</pre>
+    </div>
+
+    <div class="step-card">
+      <span class="step-badge">STEP 7</span>
+      <div class="step-title">Validate Type Safety &amp; Build for Production</div>
+      <p>Run TypeScript compilation check and production bundle:</p>
+      <pre>npm run lint    # Runs tsc --noEmit (must pass with 0 errors)
+npm run build   # Compiles frontend assets into dist/
+npm start       # Starts production Node.js server</pre>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- Section 4 -->
+    <h2>4. AI Collision Prediction &amp; Normalcy Controller Mechanics</h2>
+    <p>The application includes an autonomous multi-layer contention governor designed to detect and reverse contention collapse:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 30%;">Mitigation Mechanism</th>
+          <th>Protocol Implementation &amp; Collision Recovery Effect</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>RTS/CTS Virtual Carrier Sense</strong></td>
+          <td>Replaces 1500-byte packet collisions with 20-byte control frames. Prevents overlapping transmissions between hidden stations separated by &gt;35m. Reduces collisions by up to <strong>82%</strong>.</td>
+        </tr>
+        <tr>
+          <td><strong>Wi-Fi 6 OFDMA Scheduling</strong></td>
+          <td>Partitions 20MHz/40MHz channels into 26-tone parallel Resource Units (RUs). Trigger frames schedule up to 9 stations in parallel, completely bypassing CSMA/CA random backoff contention. Reduces collisions by <strong>92%</strong>.</td>
+        </tr>
+        <tr>
+          <td><strong>Idle Sense / Q-Learning CW</strong></td>
+          <td>Dynamically scales contention windows based on observed channel idle slots rather than legacy binary exponential doubling (BEB). Prevents cyclic reset to CWmin that triggers contention spikes.</td>
+        </tr>
+        <tr>
+          <td><strong>CoDel Active Queue Management</strong></td>
+          <td>Enforces a 5ms sojourn delay threshold. Discards stale packets before drop-tail buffers overflow, halting retry packet storms and clearing bufferbloat latency.</td>
+        </tr>
+        <tr>
+          <td><strong>Autonomous AI Governor</strong></td>
+          <td>Continuous closed-loop background daemon. When channel health falls below 60% or collision rates exceed 18%, automatically triggers coordinated multi-layer stabilization and logs the action in history.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: 28px; padding: 14px 18px; background: #f1f5f9; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 11.5px; color: #475569;">
+      <strong>Note on Offline Usage:</strong> The application does not strictly require an external internet connection or Gemini API key. If no key is configured in <code>.env</code>, the deterministic Bianchi Markov analytical engine processes all metrics locally and returns identical structured stabilization recommendations.
+    </div>
+
+  </div>
+
+</body>
+</html>

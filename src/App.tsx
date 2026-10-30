@@ -18,6 +18,7 @@ import { ScenarioPresets } from './components/ScenarioPresets';
 import { StationDetailModal } from './components/StationDetailModal';
 import { StationManagementView } from './components/StationManagementView';
 import { AiPredictionModule } from './components/AiPredictionModule';
+import { DatasetLabView } from './components/DatasetLabView';
 import { ToastContainer } from './components/ToastContainer';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { playAlertSound } from './utils/audio';
@@ -430,6 +431,50 @@ export default function App() {
               stations={engine.stations}
               onSelectStation={setSelectedStationId}
               selectedStationId={selectedStationId}
+            />
+          </div>
+        )}
+
+        {/* TAB: Custom Dataset Import & Trace Injection Lab */}
+        {activeTab === 'dataset' && (
+          <div className="flex flex-col gap-6">
+            <DatasetLabView
+              onLoadCustomTopology={(customStations) => {
+                if (engineRef.current) {
+                  engineRef.current.loadCustomStationTopology(customStations);
+                  setTick((t) => t + 1);
+                }
+              }}
+              onInjectTracePackets={(packets) => {
+                if (engineRef.current) {
+                  const count = engineRef.current.injectCustomTracePackets(packets);
+                  setTick((t) => t + 1);
+                  return count;
+                }
+                return 0;
+              }}
+              onLoadTelemetryStream={(entries) => {
+                if (engineRef.current) {
+                  engineRef.current.loadCustomTelemetryStream(entries);
+                  setTick((t) => t + 1);
+                }
+              }}
+              onExportCurrent={(type, format) => {
+                if (engineRef.current) {
+                  return engineRef.current.exportCurrentDataset(type, format);
+                }
+                return '';
+              }}
+              onTriggerAiAudit={() => {
+                setActiveTab('ai-predictor');
+              }}
+              onApplyToast={(msg, type) => {
+                addToast({
+                  type,
+                  title: 'Dataset Event',
+                  message: msg,
+                });
+              }}
             />
           </div>
         )}

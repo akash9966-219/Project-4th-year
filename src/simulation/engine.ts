@@ -19,6 +19,10 @@ import {
   TopologyOrientationMode,
   TrafficPattern,
   TrafficSchedulerAlgorithm,
+  CustomStationRecord,
+  CustomTracePacket,
+  CustomTelemetryEntry,
+  DatasetType,
 } from '../types/wlan';
 import { DEFAULT_80211_CONSTANTS, EDCA_DEFAULTS, OFDMA_RU_CONFIGS, STATION_PALETTE } from './constants';
 
@@ -812,6 +816,208 @@ export class WirelessSimulationEngine {
     this.channel.txEndUs = this.currentTimeUs;
 
     return { actionsTaken, previousMetrics: prev };
+  }
+
+  /**
+   * Load and apply a custom station topology dataset from user upload
+   */
+  public loadCustomStationTopology(customStations: CustomStationRecord[]): void {
+    if (!customStations || customStations.length === 0) return;
+
+    // Retain AP at center (0,0)
+    this.stations = [this.apStation];
+    this.config.stationCount = customStations.length;
+
+    customStations.forEach((record, index) => {
+      const dist = Math.max(2, Math.hypot(record.x, record.y));
+      const snrDb = Math.max(12, Math.min(38, 42 - 0.88 * dist));
+
+      let phyRateMbps = 54;
+      if (this.config.wifiStandard === '802.11ax') {
+        if (snrDb >= 32) phyRateMbps = 143.4;
+        else if (snrDb >= 26) phyRateMbps = 114.7;
+        else if (snrDb >= 20) phyRateMbps = 86.0;
+        else if (snrDb >= 15) phyRateMbps = 57.4;
+        else phyRateMbps = 28.7;
+      } else {
+        if (snrDb >= 28) phyRateMbps = 54;
+        else if (snrDb >= 22) phyRateMbps = 48;
+        else if (snrDb >= 18) phyRateMbps = 36;
+        else if (snrDb >= 14) phyRateMbps = 24;
+        else phyRateMbps = 12;
+      }
+
+      const pps = record.trafficRateMbps ? Math.round((record.trafficRateMbps * 1e6) / (1500 * 8)) : 250;
+
+      const station: Station = {
+        id: record.id || `STA-${(index + 1).toString().padStart(2, '0')}`,
+        name: record.name || `Custom Station ${index + 1}`,
+        role: 'STATION',
+        x: record.x,
+        y: record.y,
+        distanceToAp: Math.round(dist * 10) / 10,
+        snrDb: Math.round(snrDb * 10) / 10,
+        phyRateMbps,
+        currentCw: 15,
+        currentBackoff: Math.floor(Math.random() * 16),
+        macState: 'IDLE',
+        activeCategory: (record.primaryCategory || 'AC_BE'),
+        queues: this.createDefaultEDCAQueues(),
+        trafficPattern: 'MIXED_MULTIMEDIA',
+        packetRatePps: pps,
+        isTransmitting: false,
+        deferSlotsRemaining: 2,
+        currentTxEndTimeUs: 0,
+        bytesTransmitted: 0,
+        packetsTransmitted: 0,
+        packetsLost: 0,
+        collisionCount: 0,
+        averageDelayMs: 0,
+        lastDelaySamples: [],
+        color: STATION_PALETTE[index % STATION_PALETTE.length],
+      };
+
+      this.averageThroughputHistory.set(station.id, 1.0);
+      this.drrDeficitCounters.set(station.id, 0);
+      this.stations.push(station);
+    });
+
+    this.initMetrics();
+  }
+
+  /**
+   * Inject custom trace packets from user dataset into station queues
+   */
+  public injectCustomTracePackets(tracePackets: CustomTracePacket[]): number {
+    let enqueued = 0;
+    const nowUs = this.currentTimeUs;
+
+    for (const tp of tracePackets) {
+      let targetSta = this.stations.find((s) => s.id === tp.stationId && s.role === 'STATION');
+      if (!targetSta) {
+        const clients = this.stations.filter((s) => s.role === 'STATION');
+        if (clients.length === 0) continue;
+        targetSta = clients[enqueued % clients.length];
+      }
+
+      const cat = tp.accessCategory || 'AC_BE';
+      const q = targetSta.queues[cat];
+      if (q) {
+        const packet: Packet = {
+          id: `custom-pkt-${nowUs}-${enqueued}`,
+          sourceId: targetSta.id,
+          destId: this.apStation.id,
+          category: cat,
+          sizeBytes: tp.packetSizeBytes || 1500,
+          creationTimeUs: nowUs,
+          deadlineUs: nowUs + 100000,
+          enqueueTimeUs: nowUs,
+          retries: 0,
+        };
+        q.packets.push(packet);
+        q.totalEnqueued++;
+        enqueued++;
+      }
+    }
+
+    return enqueued;
+  }
+
+  /**
+   * Load and stream custom telemetry time-series into history
+   */
+  public loadCustomTelemetryStream(entries: CustomTelemetryEntry[]): void {
+    if (!entries || entries.length === 0) return;
+
+    this.metricsHistory = entries.map((e) => ({
+      timestampUs: e.timeSec * 1e6,
+      totalThroughputMbps: e.throughputMbps,
+      channelUtilizationPct: Math.min(100, (e.throughputMbps / 30) * 100),
+      collisionRatePct: e.collisionRatePct,
+      averageDelayMs: e.averageDelayMs,
+      jitterMs: e.jitterMs || 4.2,
+      jainsFairnessIndex: e.jainsFairnessIndex || 0.82,
+      activeStationsCount: e.stationCount,
+      totalPacketsSent: Math.round(e.throughputMbps * 100),
+      totalPacketsDropped: Math.round(e.throughputMbps * 100 * (e.collisionRatePct / 100)),
+      perCategoryThroughputMbps: {
+        AC_VO: e.throughputMbps * 0.2,
+        AC_VI: e.throughputMbps * 0.4,
+        AC_BE: e.throughputMbps * 0.3,
+        AC_BK: e.throughputMbps * 0.1,
+      },
+      perCategoryDelayMs: {
+        AC_VO: e.averageDelayMs * 0.4,
+        AC_VI: e.averageDelayMs * 0.7,
+        AC_BE: e.averageDelayMs,
+        AC_BK: e.averageDelayMs * 1.5,
+      },
+    }));
+
+    // Update current metrics to the latest entry
+    const latest = entries[entries.length - 1];
+    this.currentMetrics.totalThroughputMbps = latest.throughputMbps;
+    this.currentMetrics.collisionRatePct = latest.collisionRatePct;
+    this.currentMetrics.averageDelayMs = latest.averageDelayMs;
+    this.currentMetrics.jainsFairnessIndex = latest.jainsFairnessIndex || 0.82;
+    this.currentMetrics.activeStationsCount = latest.stationCount;
+  }
+
+  /**
+   * Export current simulation state and telemetry as downloadable JSON or CSV
+   */
+  public exportCurrentDataset(type: DatasetType, format: 'JSON' | 'CSV'): string {
+    const clients = this.stations.filter((s) => s.role === 'STATION');
+
+    if (type === 'STATION_TOPOLOGY') {
+      const records = clients.map((s) => ({
+        id: s.id,
+        name: s.name,
+        x: Math.round(s.x * 10) / 10,
+        y: Math.round(s.y * 10) / 10,
+        trafficRateMbps: Math.round(((s.packetRatePps * 1500 * 8) / 1e6) * 10) / 10,
+        snrDb: s.snrDb,
+        phyRateMbps: s.phyRateMbps,
+      }));
+
+      if (format === 'JSON') return JSON.stringify(records, null, 2);
+      const csvRows = ['id,name,x,y,trafficRateMbps,snrDb,phyRateMbps'];
+      records.forEach((r) => csvRows.push(`${r.id},"${r.name}",${r.x},${r.y},${r.trafficRateMbps},${r.snrDb},${r.phyRateMbps}`));
+      return csvRows.join('\n');
+    }
+
+    if (type === 'TELEMETRY_SERIES') {
+      const history = this.metricsHistory.slice(-50);
+      if (format === 'JSON') return JSON.stringify(history, null, 2);
+      const csvRows = ['timeSec,stationCount,collisionRatePct,throughputMbps,averageDelayMs,jainsFairnessIndex'];
+      history.forEach((h) => {
+        csvRows.push(
+          `${(h.timestampUs / 1e6).toFixed(2)},${h.activeStationsCount},${h.collisionRatePct.toFixed(1)},${h.totalThroughputMbps.toFixed(2)},${h.averageDelayMs.toFixed(1)},${h.jainsFairnessIndex.toFixed(2)}`
+        );
+      });
+      return csvRows.join('\n');
+    }
+
+    // Default PACKET_TRACE
+    const packetRows: Array<{ timeOffsetMs: number; stationId: string; packetSizeBytes: number; accessCategory: string }> = [];
+    clients.forEach((s, idx) => {
+      (['AC_VO', 'AC_VI', 'AC_BE', 'AC_BK'] as AccessCategory[]).forEach((cat) => {
+        const count = Math.min(8, s.queues[cat]?.packets.length || 0);
+        for (let i = 0; i < count; i++) {
+          packetRows.push({
+            timeOffsetMs: (idx * 15 + i * 5),
+            stationId: s.id,
+            packetSizeBytes: 1500,
+            accessCategory: cat,
+          });
+        }
+      });
+    });
+
+    if (format === 'JSON') return JSON.stringify(packetRows, null, 2);
+    const csvRows = ['timeOffsetMs,stationId,packetSizeBytes,accessCategory'];
+    packetRows.forEach((p) => csvRows.push(`${p.timeOffsetMs},${p.stationId},${p.packetSizeBytes},${p.accessCategory}`));
+    return csvRows.join('\n');
   }
 
   /**

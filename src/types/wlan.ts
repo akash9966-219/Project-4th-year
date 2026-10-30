@@ -253,3 +253,49 @@ export interface NormalcyInterventionLog {
   healthScoreAfter: number;
   reductionCollisionPct: number;
 }
+
+export type DatasetType = 'PACKET_TRACE' | 'STATION_TOPOLOGY' | 'TELEMETRY_SERIES';
+
+export interface CustomTracePacket {
+  timeOffsetMs: number;
+  stationId: string;
+  packetSizeBytes: number;
+  accessCategory: AccessCategory;
+  snrDb?: number;
+  didCollide?: boolean;
+  queueDelayMs?: number;
+}
+
+export interface CustomStationRecord {
+  id: string;
+  name?: string;
+  x: number;
+  y: number;
+  trafficRateMbps?: number;
+  primaryCategory?: AccessCategory;
+  macAddress?: string;
+  txPowerDbm?: number;
+}
+
+export interface CustomTelemetryEntry {
+  timeSec: number;
+  stationCount: number;
+  collisionRatePct: number;
+  throughputMbps: number;
+  averageDelayMs: number;
+  jainsFairnessIndex?: number;
+  jitterMs?: number;
+}
+
+export interface ImportedDataset {
+  id: string;
+  name: string;
+  type: DatasetType;
+  source: 'CSV' | 'JSON' | 'PRESET_TEMPLATE';
+  timestamp: number;
+  packetTraces?: CustomTracePacket[];
+  stations?: CustomStationRecord[];
+  telemetryEntries?: CustomTelemetryEntry[];
+  rawText?: string;
+  description?: string;
+}

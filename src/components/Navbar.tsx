@@ -4,8 +4,9 @@
  */
 
 import React, { useState } from 'react';
-import { Play, Pause, RotateCcw, Activity, FastForward, Bell, AlertTriangle, Menu, X, Sliders, Clock, Compass, Users, Sparkles } from 'lucide-react';
+import { Play, Pause, RotateCcw, Activity, FastForward, Bell, AlertTriangle, Menu, X, Sliders, Clock, Compass, Users, Sparkles, FileDown, Database } from 'lucide-react';
 import { ToastSettings } from '../types/wlan';
+import { generateWorkflowPdf } from '../utils/pdfGenerator';
 
 interface NavbarProps {
   activeTab: string;
@@ -40,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const navItems = [
     { id: 'stage', label: 'Live Simulation', icon: Activity },
+    { id: 'dataset', label: 'Dataset Lab', icon: Database },
     { id: 'ai-predictor', label: 'AI Predictor', icon: Sparkles },
     { id: 'stations', label: 'Station Management', icon: Users },
     { id: 'timeline', label: 'Airtime Timeline', icon: Clock },
@@ -95,6 +97,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right: Simulation Controls & Status Cluster */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Download Workflow PDF Button */}
+          <button
+            onClick={() => generateWorkflowPdf()}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-xs font-medium text-sky-300 hover:text-white transition-all cursor-pointer shrink-0 shadow-sm shadow-sky-500/10"
+            title="Download full project workload map, extensions list & setup workflow as PDF"
+          >
+            <FileDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <span className="hidden sm:inline font-mono">Workflow PDF</span>
+          </button>
+
           {/* Notification Alert Status */}
           <button
             onClick={onOpenNotificationSettings}

@@ -126,6 +126,11 @@ Respond with ONLY valid JSON strictly matching this schema:
     }
   });
 
+  // Serve Printable/Downloadable Developer Workflow Manual
+  app.get('/workflow-manual', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'docs', 'WORKFLOW_MANUAL.html'));
+  });
+
   if (!isProd) {
     const vite = await createViteServer({
       server: { middlewareMode: true },

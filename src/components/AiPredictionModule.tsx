@@ -42,7 +42,9 @@ import {
   History,
   CheckCircle2,
   Sliders,
+  FileDown,
 } from 'lucide-react';
+import { generateWorkflowPdf } from '../utils/pdfGenerator';
 
 interface AiPredictionModuleProps {
   metrics: SimulationMetrics;
@@ -307,6 +309,16 @@ export const AiPredictionModule: React.FC<AiPredictionModuleProps> = ({
           >
             <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Audit</span>
+          </button>
+
+          {/* Download Workflow PDF Button */}
+          <button
+            onClick={() => generateWorkflowPdf()}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-xs font-mono font-medium text-sky-300 hover:text-white transition-colors cursor-pointer"
+            title="Download full project workload map, extensions list & setup workflow as PDF"
+          >
+            <FileDown className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">Export PDF</span>
           </button>
 
           {/* Minimize / Expand Toggle */}
